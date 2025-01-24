@@ -1,0 +1,16 @@
+﻿namespace Ambev.DeveloperEvaluation.Application.Sales.CreateSales;
+
+/// <summary>
+/// Represents the response returned after successfully creating a new sales.
+/// </summary>
+/// <remarks>
+/// This response contains the unique identifier of the newly created sales,
+/// </remarks>
+public class CreateSalesResult
+{
+    /// <summary>
+    /// Gets or sets the unique identifier of the newly created sales.
+    /// </summary>
+    /// <value>A GUID that uniquely identifies the created user in the system.</value>
+    public Guid Id { get; set; }
+}
