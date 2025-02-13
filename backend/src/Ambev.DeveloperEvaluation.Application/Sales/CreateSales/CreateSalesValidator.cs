@@ -35,6 +35,10 @@ public class CreateSalesValidator : AbstractValidator<CreateSalesCommand>
             .NotEmpty().WithMessage("The sale must contain at least one item.")
             .Must(HaveValidSaleItems).WithMessage("One or more sale items are invalid.");
 
+        RuleFor(x => x.CustomerName).NotEmpty().WithMessage("Customer name is required.");
+        RuleFor(x => x.TotalSaleAmount).GreaterThan(0).WithMessage("Total sale amount must be greater than zero.");
+        RuleFor(x => x.SaleDate).NotEmpty().WithMessage("Sale date is required.");
+
         // Validate each SaleItem
         RuleForEach(sale => sale.SaleItems).ChildRules(items =>
         {

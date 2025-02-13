@@ -1,87 +1,86 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using System.Threading;
+using System.Threading.Tasks;
+using AutoMapper;
+using FluentValidation;
+using MediatR;
 using Ambev.DeveloperEvaluation.Domain.Entities;
 using Ambev.DeveloperEvaluation.Domain.Repositories;
-using AutoMapper;
-using MediatR;
 
 namespace Ambev.DeveloperEvaluation.Application.Sales.CreateSales;
 
 /// <summary>
-/// Handler for processing CreateUserCommand requests
+/// Handler for processing CreateSalesCommand requests.
 /// </summary>
 public class CreateSalesHandler : IRequestHandler<CreateSalesCommand, CreateSalesResult>
 {
-    private readonly ISalesRecordRepository _salesRecordRepository;
+    private readonly ISalesRecordRepository _repository;
     private readonly IMapper _mapper;
+    private readonly IValidator<CreateSalesCommand> _validator;
 
     /// <summary>
-    /// Initializes a new instance of CreateUserHandler
+    /// Initializes a new instance of CreateSalesHandler.
     /// </summary>
-    /// <param name="salesRecordRepository"></param>
-    /// <param name="mapper">The AutoMapper instance</param>
-    /// <param name="validator">The validator for CreateUserCommand</param>
-    public CreateSalesHandler(ISalesRecordRepository salesRecordRepository, IMapper mapper)
+    public CreateSalesHandler(ISalesRecordRepository repository, IMapper mapper, IValidator<CreateSalesCommand> validator)
     {
-        _salesRecordRepository = salesRecordRepository;
+        _repository = repository;
         _mapper = mapper;
+        _validator = validator;
     }
 
     public async Task<CreateSalesResult> Handle(CreateSalesCommand command, CancellationToken cancellationToken)
     {
-        // Validate the command
-        var validator = new CreateSalesValidator();
-        var validationResult = await validator.ValidateAsync(command, cancellationToken);
-
+        // Validate the command using FluentValidation
+        var validationResult = await _validator.ValidateAsync(command, cancellationToken);
         if (!validationResult.IsValid)
-            throw new ValidationException(validationResult.Errors.ToString());
-
-        // Process SaleItems and apply business rules
-        foreach (var item in command.SaleItems)
         {
-            if (item.Quantity < 4)
-            {
-                item.Discount = 0; // No discount for less than 4 items
-            }
-            else if (item.Quantity >= 4 && item.Quantity < 10)
-            {
-                item.Discount = item.UnitPrice * item.Quantity * 0.10m; // 10% discount for 4-9 items
-            }
-            else if (item.Quantity >= 10 && item.Quantity <= 20)
-            {
-                item.Discount = item.UnitPrice * item.Quantity * 0.20m; // 20% discount for 10-20 items
-            }
-            else if (item.Quantity > 20)
-            {
-                throw new InvalidOperationException($"Cannot sell more than 20 items of {item.ProductName}.");
-            }
-
-            // Ensure the total price for the item is calculated correctly
-            item.ItemTotal = (item.UnitPrice * item.Quantity) - item.Discount;
+            throw new FluentValidation.ValidationException(validationResult.Errors);
         }
 
-        // Create a new SalesRecord entity
-        var salesRecord = new SalesRecord
+        // Apply business rules to SaleItems
+        foreach (var item in command.SaleItems)
         {
-            SaleDate = command.SaleDate,
-            CustomerName = command.CustomerName,
-            TotalSaleAmount = command.SaleItems.Sum(i => i.ItemTotal),
-            Branch = command.Branch,
-            IsCancelled = command.IsCancelled,
-            SaleItems = command.SaleItems.Select(item => new SaleItem
+            item.Discount = item.Quantity switch
             {
-                ProductName = item.ProductName,
-                Quantity = item.Quantity,
-                UnitPrice = item.UnitPrice,
-                Discount = item.Discount,
-                ItemTotal = item.ItemTotal
-            }).ToList()
-        };
+                < 4 => 0,
+                >= 4 and < 10 => item.UnitPrice * item.Quantity * 0.10m,
+                >= 10 and <= 20 => item.UnitPrice * item.Quantity * 0.20m,
+                > 20 => throw new InvalidOperationException($"Cannot sell more than 20 items of {item.ProductName}."),
+            };
+        }
 
-        // Save the sales record in the repository
-        var createdSalesRecord = await _salesRecordRepository.CreateAsync(salesRecord, cancellationToken);
+        // Ensure mapping configuration is working correctly
+        var salesRecord = _mapper.Map<SalesRecord>(command);
+        if (salesRecord == null)
+        {
+            throw new NullReferenceException("Failed to map CreateSalesCommand to SalesRecord. Ensure AutoMapper is configured correctly.");
+        }
 
-        // Map the created sales record to the result DTO
-        var result = _mapper.Map<CreateSalesResult>(createdSalesRecord);
+        // Manually ensure SaleItems are mapped properly
+        salesRecord.SaleItems = command.SaleItems.Select(si => new SaleItem
+        {
+            ProductName = si.ProductName,
+            Quantity = si.Quantity,
+            UnitPrice = si.UnitPrice,
+            Discount = si.Discount
+        }).ToList();
+
+        // Update total sale amount
+        salesRecord.TotalSaleAmount = salesRecord.SaleItems.Sum(i => (i.UnitPrice * i.Quantity) - i.Discount);
+
+        // Save to repository
+        var createdRecord = await _repository.CreateAsync(salesRecord, cancellationToken);
+        if (createdRecord == null)
+        {
+            throw new NullReferenceException("Repository returned null when creating SalesRecord.");
+        }
+
+        // Map the created record to result DTO
+        var result = _mapper.Map<CreateSalesResult>(createdRecord);
+        if (result == null)
+        {
+            throw new NullReferenceException("Failed to map SalesRecord to CreateSalesResult.");
+        }
+
         return result;
     }
 
