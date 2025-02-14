@@ -12,14 +12,10 @@ public class SaleItem
 
     public decimal UnitPrice { get; set; } 
 
-    public decimal Discount { get; set; } = 0.00m; 
+    public decimal Discount { get; set; } = 0.00m;
 
-    // Computed property for the total amount for the item
-    public decimal ItemTotal
-    {
-        get => (Quantity * UnitPrice) - Discount;
-        set => throw new NotImplementedException();
-    }
+    // Propriedade calculada ao invés de ser definida diretamente
+    public decimal ItemTotal => (UnitPrice * Quantity) - Discount;
 
     public SalesRecord SalesRecord { get; set; }
 
